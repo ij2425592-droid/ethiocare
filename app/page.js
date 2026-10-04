@@ -1,59 +1,58 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import {
   MapPin, Phone, Clock, Search, Shield, Zap,
-  ExternalLink, AlertCircle, Plus, X, Stethoscope, Radio
+  AlertCircle, X, Stethoscope, Radio
 } from 'lucide-react';
+
+// Crucial: Load Leaflet Map on client-side only (disables SSR)
+const MapComponent = dynamic(() => import('@/components/MapComponent'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400 text-xs font-semibold">
+      Loading interactive map...
+    </div>
+  )
+});
 
 const TRANSLATIONS = {
   en: {
     title: "EthioCare",
     tagline: "Neighborhood Health & Clinic Finder",
     searchPlaceholder: "Search hospital, clinic, pharmacy or landmark...",
-    citySelect: "Select City",
     subCitySelect: "Sub-City (Kifle Ketema)",
-    allTypes: "All Types",
     openNow: "Open Now (EAT)",
-    twentyFourSeven: "24/7 Service",
     cbhiAccepted: "CBHI",
     findNearestSOS: "Emergency 24/7 SOS",
     emergencyHotlines: "Emergency Hotlines",
     callNow: "Call",
-    directions: "Get Route",
-    close: "Close"
+    directions: "Get Route"
   },
   am: {
     title: "ኢትዮ-ኬር",
     tagline: "የአካባቢዎ የጤና ተቋማትና መድኃኒት ቤቶች መፈለጊያ",
-    searchPlaceholder: "ሆስፒታል፣ ክሊኒክ፣ ፋርማሲ ወይም የታወቀ ቦታ ይፈልጉ...",
-    citySelect: "ከተማ ይምረጡ",
-    subCitySelect: "ክፍለ ከተማ ይምረጡ",
-    allTypes: "ሁሉም አይነቶች",
+    searchPlaceholder: "ሆስፒታል፣ ክሊኒክ፣ ፋርማሲ ወይም የታወቀ ቦታ...",
+    subCitySelect: "ክፍለ ከተማ",
     openNow: "አሁን ክፍት",
-    twentyFourSeven: "24/7 ሙሉ ቀንና ሌሊት",
     cbhiAccepted: "የማህበረሰብ ጤና መድህን (CBHI)",
     findNearestSOS: "አስቸኳይ 24/7 ድንገተኛ",
     emergencyHotlines: "የአደጋ ጊዜ ስልኮች",
     callNow: "ይደውሉ",
-    directions: "አቅጣጫ አሳይ",
-    close: "ዝጋ"
+    directions: "አቅጣጫ አሳይ"
   },
   om: {
     title: "Ito-Keer",
     tagline: "Barbaada Buufata Fayyaa fi Faarmaasii Naannoo",
-    searchPlaceholder: "Hospitaala, kilinika, faarmaasii ykn iddoo beekamaa barbaadi...",
-    citySelect: "Magaalaa Filadhu",
+    searchPlaceholder: "Hospitaala, kilinika, faarmaasii...",
     subCitySelect: "Kifla Magaalaa",
-    allTypes: "Gosa Hunda",
     openNow: "Amma Banaa",
-    twentyFourSeven: "Tajaajila 24/7",
     cbhiAccepted: "Wabii Fayyaa (CBHI)",
     findNearestSOS: "Balaa Ariifachiisaa 24/7",
     emergencyHotlines: "Lakkoofsota Balaa",
     callNow: "Bilbili",
-    directions: "Kallattii",
-    close: "Cufi"
+    directions: "Kallattii"
   }
 };
 
@@ -80,22 +79,11 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cityFilter, setCityFilter] = useState('Addis Ababa');
   const [subCityFilter, setSubCityFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
   const [filter247, setFilter247] = useState(false);
   const [filterCBHI, setFilterCBHI] = useState(false);
   const [filterOpenNow, setFilterOpenNow] = useState(false);
 
   const [showHotlines, setShowHotlines] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  const mapRef = useRef(null);
-  const leafletMap = useRef(null);
-  const markersRef = useRef({});
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
 
   const fetchFacilities = async () => {
     setLoading(true);
@@ -103,7 +91,6 @@ export default function HomePage() {
       const params = new URLSearchParams();
       if (cityFilter) params.append('city', cityFilter);
       if (subCityFilter !== 'all') params.append('subCity', subCityFilter);
-      if (typeFilter !== 'all') params.append('type', typeFilter);
       if (filter247) params.append('is24_7', 'true');
       if (filterCBHI) params.append('cbhi', 'true');
       if (filterOpenNow) params.append('openNow', 'true');
@@ -123,79 +110,10 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchFacilities();
-  }, [cityFilter, subCityFilter, typeFilter, filter247, filterCBHI, filterOpenNow]);
-
-  // Leaflet map setup
-  useEffect(() => {
-    if (typeof window === 'undefined' || !mapRef.current) return;
-    const L = require('leaflet');
-
-    if (!leafletMap.current) {
-      leafletMap.current = L.map(mapRef.current, { zoomControl: false }).setView([9.0182, 38.7525], 13);
-      L.control.zoom({ position: 'bottomright' }).addTo(leafletMap.current);
-
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-        maxZoom: 19
-      }).addTo(leafletMap.current);
-    }
-
-    // Clear old markers
-    Object.values(markersRef.current).forEach((m) => m.remove());
-    markersRef.current = {};
-
-    facilities.forEach((fac) => {
-      if (!fac.latitude || !fac.longitude) return;
-
-      const color = fac.type === 'public_hospital' ? '#dc2626' :
-                    fac.type === 'pharmacy' ? '#16a34a' : '#2563eb';
-
-      const customHtml = `
-        <div style="background-color: ${color}; width: 34px; height: 34px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer;">
-          <span style="color: white; font-size: 15px;">
-            ${fac.type === 'pharmacy' ? '💊' : fac.type === 'public_hospital' ? '🏥' : '🩺'}
-          </span>
-        </div>
-      `;
-
-      const icon = L.divIcon({
-        html: customHtml,
-        iconSize: [34, 34],
-        iconAnchor: [17, 17]
-      });
-
-      const marker = L.marker([fac.latitude, fac.longitude], { icon })
-        .addTo(leafletMap.current)
-        .on('click', () => {
-          setSelectedFacility(fac);
-          leafletMap.current.flyTo([fac.latitude, fac.longitude], 15);
-        });
-
-      markersRef.current[fac.id] = marker;
-    });
-
-    if (facilities.length > 0 && !selectedFacility) {
-      const group = L.featureGroup(Object.values(markersRef.current));
-      leafletMap.current.fitBounds(group.getBounds().pad(0.2));
-    }
-  }, [facilities]);
-
-  const triggerSOS = () => {
-    setTypeFilter('pharmacy');
-    setFilter247(true);
-    setFilterOpenNow(true);
-    showToast("SOS Mode: Showing open 24/7 night pharmacies");
-  };
+  }, [cityFilter, subCityFilter, filter247, filterCBHI, filterOpenNow]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
-      {toastMessage && (
-        <div className="fixed top-16 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl border border-emerald-500 text-xs font-semibold flex items-center gap-2">
-          <Zap className="w-4 h-4 text-emerald-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Header */}
       <header className="bg-emerald-800 text-white px-4 py-2.5 flex items-center justify-between shadow-md z-20">
         <div className="flex items-center gap-2.5">
@@ -210,7 +128,10 @@ export default function HomePage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={triggerSOS}
+            onClick={() => {
+              setFilter247(true);
+              setFilterOpenNow(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow"
           >
             <Radio className="w-3.5 h-3.5 animate-pulse" />
@@ -243,7 +164,6 @@ export default function HomePage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <aside className="w-full md:w-[420px] bg-white border-r border-slate-200 flex flex-col z-10 shadow">
-          {/* Search & Filters */}
           <div className="p-3 border-b border-slate-100 space-y-2 bg-slate-50/60">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -312,7 +232,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {loading ? (
               <div className="p-8 text-center text-xs text-slate-400">Loading facilities...</div>
@@ -330,12 +249,7 @@ export default function HomePage() {
                 return (
                   <div
                     key={fac.id}
-                    onClick={() => {
-                      setSelectedFacility(fac);
-                      if (leafletMap.current && fac.latitude && fac.longitude) {
-                        leafletMap.current.flyTo([fac.latitude, fac.longitude], 15);
-                      }
-                    }}
+                    onClick={() => setSelectedFacility(fac)}
                     className={`p-3 rounded-lg border cursor-pointer transition ${
                       isSelected ? 'border-emerald-500 bg-emerald-50/40 ring-1 ring-emerald-500' : 'border-slate-100 hover:border-slate-200 bg-white'
                     }`}
@@ -387,9 +301,13 @@ export default function HomePage() {
           </div>
         </aside>
 
-        {/* Map */}
+        {/* Map using Dynamic Import Component */}
         <main className="flex-1 h-full relative">
-          <div ref={mapRef} className="w-full h-full" />
+          <MapComponent
+            facilities={facilities}
+            selectedFacility={selectedFacility}
+            onSelectFacility={setSelectedFacility}
+          />
 
           {selectedFacility && (
             <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-white p-4 rounded-xl shadow-xl border border-slate-200 z-20">
@@ -428,7 +346,7 @@ export default function HomePage() {
         </main>
       </div>
 
-      {/* Hotlines Modal */}
+      {/* Emergency Hotlines Modal */}
       {showHotlines && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-2xl space-y-3">
