@@ -801,8 +801,10 @@ export default function HomePage() {
                           className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
                             fac.type === 'public_hospital'
                               ? 'bg-red-100 text-red-800 border border-red-200'
+                              : fac.type === 'health_center'
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold'
                               : fac.type === 'pharmacy'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              ? 'bg-green-100 text-green-800 border border-green-200'
                               : fac.type === 'diagnostic_lab'
                               ? 'bg-amber-100 text-amber-800 border border-amber-200'
                               : fac.type === 'ambulance_hub'
@@ -810,7 +812,7 @@ export default function HomePage() {
                               : 'bg-blue-100 text-blue-800 border border-blue-200'
                           }`}
                         >
-                          {fac.type.replace('_', ' ')}
+                          {fac.type === 'health_center' ? (lang === 'am' ? 'ጤና ጣቢያ' : lang === 'om' ? 'Buufata Fayyaa' : 'Health Center') : fac.type.replace('_', ' ')}
                         </span>
 
                         <span

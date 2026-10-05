@@ -101,9 +101,13 @@ export default function MapComponent({
       let ringColor = 'rgba(220, 38, 38, 0.35)';
       let iconEmoji = '🏥';
 
-      if (fac.type === 'pharmacy') {
-        bgColor = '#059669'; // Emerald
-        ringColor = 'rgba(5, 150, 105, 0.35)';
+      if (fac.type === 'health_center') {
+        bgColor = '#047857'; // Deep Emerald Green
+        ringColor = 'rgba(4, 120, 87, 0.4)';
+        iconEmoji = '🛡️';
+      } else if (fac.type === 'pharmacy') {
+        bgColor = '#16a34a'; // Green
+        ringColor = 'rgba(22, 163, 74, 0.35)';
         iconEmoji = '💊';
       } else if (fac.type === 'private_hospital') {
         bgColor = '#2563eb'; // Blue
