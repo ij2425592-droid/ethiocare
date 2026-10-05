@@ -2,13 +2,17 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { Layers, Navigation, Crosshair, ZoomIn, ZoomOut, Phone, Compass } from 'lucide-react';
+import {
+  Layers, Navigation, Crosshair, ZoomIn, ZoomOut,
+  Phone, Compass, Route, Car, Footprints, ExternalLink,
+  Copy, Check
+} from 'lucide-react';
 
 const TILE_LAYERS = {
   humanitarian: {
     name: 'Health Map (OSM Hot)',
     url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of Humanitarian OpenStreetMap Team',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Humanitarian OSM',
     maxZoom: 19,
   },
   standard: {
@@ -32,10 +36,13 @@ export default function MapComponent({
   const markersRef = useRef({});
   const userMarkerRef = useRef(null);
   const userCircleRef = useRef(null);
+  const routeLineRef = useRef(null);
   const activeTileLayerRef = useRef(null);
   const [currentLayerKey, setCurrentLayerKey] = useState('humanitarian');
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [copiedCoords, setCopiedCoords] = useState(false);
 
-  // Initialize Map
+  // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -43,11 +50,10 @@ export default function MapComponent({
       const map = L.map(mapContainerRef.container || mapContainerRef.current, {
         zoomControl: false,
         attributionControl: true,
-      }).setView([9.0182, 38.7525], 13); // Default Addis Ababa center
+      }).setView([9.0182, 38.7525], 13); // Addis Ababa center
 
       leafletMapRef.current = map;
 
-      // Add base tile layer
       const layerConfig = TILE_LAYERS[currentLayerKey];
       const tileLayer = L.tileLayer(layerConfig.url, {
         attribution: layerConfig.attribution,
@@ -56,17 +62,11 @@ export default function MapComponent({
       }).addTo(map);
 
       activeTileLayerRef.current = tileLayer;
-
-      // Move attribution control to bottom-right with compact styling
       map.attributionControl.setPosition('bottomright');
     }
-
-    return () => {
-      // Map cleanup if needed on unmount
-    };
   }, []);
 
-  // Handle Layer Switch
+  // Handle Layer Switching
   const switchLayer = (key) => {
     if (!leafletMapRef.current || !TILE_LAYERS[key]) return;
     if (activeTileLayerRef.current) {
@@ -83,12 +83,11 @@ export default function MapComponent({
     setCurrentLayerKey(key);
   };
 
-  // Update Markers when facilities list changes
+  // Update Facility Markers
   useEffect(() => {
     const map = leafletMapRef.current;
     if (!map) return;
 
-    // Clear existing facility markers
     Object.values(markersRef.current).forEach((m) => m.remove());
     markersRef.current = {};
 
@@ -98,7 +97,6 @@ export default function MapComponent({
       const isSelected = selectedFacility?.id === fac.id;
       const isEmergency = fac.is_24_7 || fac.type === 'ambulance_hub' || fac.type === 'public_hospital';
 
-      // Determine marker colors & icons
       let bgColor = '#dc2626'; // Red
       let ringColor = 'rgba(220, 38, 38, 0.35)';
       let iconEmoji = '🏥';
@@ -125,7 +123,7 @@ export default function MapComponent({
         iconEmoji = '🩺';
       }
 
-      const displayName = lang === 'am' ? fac.name_am : lang === 'om' ? fac.name_om : fac.name_en;
+      const displayName = lang === 'am' ? fac.name_am : lang === 'om' ? fac.name_om : lang === 'ti' ? fac.name_ti : fac.name_en;
       const displayLandmark = lang === 'am' ? fac.landmark_am : fac.landmark_en;
 
       const markerHtml = `
@@ -188,7 +186,7 @@ export default function MapComponent({
         zIndexOffset: isSelected ? 1000 : isEmergency ? 500 : 100,
       }).addTo(map);
 
-      // Bind rich popup
+      // Popup content with routing
       const popupContent = document.createElement('div');
       popupContent.className = 'p-1 max-w-[260px] text-slate-800 font-sans';
       popupContent.innerHTML = `
@@ -230,8 +228,8 @@ export default function MapComponent({
             <a href="https://www.google.com/maps/dir/?api=1&destination=${fac.latitude},${fac.longitude}" target="_blank" rel="noreferrer" style="
               flex: 1;
               text-align: center;
-              background: #f1f5f9;
-              color: #1e293b;
+              background: #2563eb;
+              color: #ffffff;
               font-size: 11px;
               font-weight: 700;
               padding: 6px 8px;
@@ -255,7 +253,6 @@ export default function MapComponent({
       markersRef.current[fac.id] = marker;
     });
 
-    // If facilities loaded and no specific facility selected, fit view
     if (facilities.length > 0 && !selectedFacility) {
       const group = L.featureGroup(Object.values(markersRef.current));
       if (group.getLayers().length > 0) {
@@ -264,25 +261,7 @@ export default function MapComponent({
     }
   }, [facilities, lang, selectedFacility]);
 
-  // Handle selected facility flyTo & popup open
-  useEffect(() => {
-    const map = leafletMapRef.current;
-    if (!map || !selectedFacility) return;
-
-    if (selectedFacility.latitude && selectedFacility.longitude) {
-      map.flyTo([selectedFacility.latitude, selectedFacility.longitude], 15, {
-        animate: true,
-        duration: 1.2,
-      });
-
-      const targetMarker = markersRef.current[selectedFacility.id];
-      if (targetMarker) {
-        targetMarker.openPopup();
-      }
-    }
-  }, [selectedFacility]);
-
-  // Handle user location marker
+  // Handle User Location Marker
   useEffect(() => {
     const map = leafletMapRef.current;
     if (!map) return;
@@ -330,10 +309,86 @@ export default function MapComponent({
         fillOpacity: 0.1,
         weight: 1.5,
       }).addTo(map);
-
-      map.flyTo([userLocation.lat, userLocation.lng], 14);
     }
   }, [userLocation]);
+
+  // Handle Interactive Visual Routing between User and Selected Facility
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    if (!map) return;
+
+    // Remove existing route line
+    if (routeLineRef.current) {
+      routeLineRef.current.remove();
+      routeLineRef.current = null;
+    }
+
+    if (selectedFacility && selectedFacility.latitude && selectedFacility.longitude) {
+      const destLat = selectedFacility.latitude;
+      const destLng = selectedFacility.longitude;
+
+      if (userLocation && userLocation.lat && userLocation.lng) {
+        const startLat = userLocation.lat;
+        const startLng = userLocation.lng;
+
+        // Calculate straight line & estimated driving route
+        const latlngs = [
+          [startLat, startLng],
+          [destLat, destLng]
+        ];
+
+        // Draw glowing dashed navigation route polyline
+        const polyline = L.polyline(latlngs, {
+          color: '#2563eb',
+          weight: 4,
+          opacity: 0.85,
+          dashArray: '8, 8',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map);
+
+        routeLineRef.current = polyline;
+
+        // Estimate distance & duration
+        const dLat = ((destLat - startLat) * Math.PI) / 180;
+        const dLon = ((destLng - startLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((startLat * Math.PI) / 180) *
+            Math.cos((destLat * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = Math.round(6371 * c * 10) / 10;
+
+        // Driving speed ~30km/h in city traffic, Walking ~4.5km/h
+        const driveMinutes = Math.max(2, Math.round((distanceKm / 30) * 60));
+        const walkMinutes = Math.round((distanceKm / 4.5) * 60);
+
+        setRouteInfo({
+          distanceKm,
+          driveMinutes,
+          walkMinutes,
+          destinationName: selectedFacility.name_en,
+          coords: `${destLat},${destLng}`
+        });
+
+        // Fit map bounds to show both user and destination
+        map.fitBounds(polyline.getBounds().pad(0.25), { animate: true, duration: 1 });
+      } else {
+        // Just fly to facility if user location not set
+        setRouteInfo(null);
+        map.flyTo([destLat, destLng], 15, { animate: true, duration: 1.2 });
+      }
+
+      const targetMarker = markersRef.current[selectedFacility.id];
+      if (targetMarker) {
+        targetMarker.openPopup();
+      }
+    } else {
+      setRouteInfo(null);
+    }
+  }, [selectedFacility, userLocation]);
 
   const handleFitAll = () => {
     if (!leafletMapRef.current) return;
@@ -343,12 +398,61 @@ export default function MapComponent({
     }
   };
 
-  const handleZoomIn = () => leafletMapRef.current?.zoomIn();
-  const handleZoomOut = () => leafletMapRef.current?.zoomOut();
+  const handleCopyCoords = (coords) => {
+    navigator.clipboard.writeText(coords);
+    setCopiedCoords(true);
+    setTimeout(() => setCopiedCoords(false), 2000);
+  };
 
   return (
     <div className="relative w-full h-full bg-slate-100 overflow-hidden select-none">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+      {/* Floating Active Route HUD Box */}
+      {routeInfo && selectedFacility && (
+        <div className="absolute top-4 left-4 z-[400] bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-2.5 rounded-2xl shadow-xl border border-slate-700/80 max-w-xs animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-1.5 mb-1.5">
+            <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1">
+              <Route className="w-3.5 h-3.5 text-emerald-400" />
+              Active Route Navigation
+            </span>
+            <span className="text-[10px] bg-blue-600 font-extrabold px-1.5 py-0.5 rounded text-white">
+              {routeInfo.distanceKm} km
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-semibold">
+            <div className="flex items-center gap-1 text-slate-200">
+              <Car className="w-3.5 h-3.5 text-blue-400" />
+              <span>~{routeInfo.driveMinutes} min drive</span>
+            </div>
+            <div className="flex items-center gap-1 text-slate-300 text-[11px]">
+              <Footprints className="w-3.5 h-3.5 text-amber-400" />
+              <span>~{routeInfo.walkMinutes} min walk</span>
+            </div>
+          </div>
+
+          <div className="flex gap-1.5 mt-2 pt-2 border-t border-slate-800 text-[10px]">
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${selectedFacility.latitude},${selectedFacility.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-1 px-2 rounded-lg text-center flex items-center justify-center gap-1 shadow"
+            >
+              <Navigation className="w-3 h-3" />
+              Google Maps
+            </a>
+            <button
+              onClick={() => handleCopyCoords(`${selectedFacility.latitude},${selectedFacility.longitude}`)}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-1 px-2 rounded-lg text-center flex items-center gap-1 border border-slate-700"
+              title="Copy GPS for Taxi apps (Feres/RIDE/Yango)"
+            >
+              {copiedCoords ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedCoords ? 'Copied' : 'GPS'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Map Controls */}
       <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
@@ -384,14 +488,14 @@ export default function MapComponent({
         {/* Zoom Controls & Fit */}
         <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200/80 flex flex-col overflow-hidden">
           <button
-            onClick={handleZoomIn}
+            onClick={() => leafletMapRef.current?.zoomIn()}
             title="Zoom In"
             className="p-2 hover:bg-slate-100 text-slate-700 border-b border-slate-100 transition flex items-center justify-center"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
-            onClick={handleZoomOut}
+            onClick={() => leafletMapRef.current?.zoomOut()}
             title="Zoom Out"
             className="p-2 hover:bg-slate-100 text-slate-700 border-b border-slate-100 transition flex items-center justify-center"
           >
